@@ -1,434 +1,1092 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-import json
+import io
 import os
+import json
+import re
+from typing import Optional
 
-# ==========================================
-# CONFIGURAÇÃO DA APLICAÇÃO & DESIGN SYSTEM
-# ==========================================
+
+# ============================================================
+# CONFIGURAÇÃO
+# ============================================================
+
 st.set_page_config(
-    page_title="SERCOM | Executive AI Cost Center Analytics",
-    page_icon="🤖",
+    page_title="SERCOM | Executive Analytics",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Estilização CSS Senior Dark Mode (Paleta Roxo Royal #0E0B16 + Laranja SERCOM #F58220)
-st.markdown("""
-    <style>
-    /* Estilo Global Dark */
-    .stApp {
-        background-color: #0E0B16;
-        color: #E2E8F0;
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    }
-    
-    /* Header Principal com Badge de IA */
-    .senior-header {
-        background: linear-gradient(135deg, #1D0F38 0%, #120A24 100%);
-        padding: 22px 28px;
-        border-radius: 12px;
-        border: 1px solid #2D2545;
-        border-left: 6px solid #F58220;
-        margin-bottom: 24px;
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
-    }
-    .senior-title {
-        font-size: 1.6rem;
-        font-weight: 800;
-        color: #FFFFFF;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-    .senior-subtitle {
-        font-size: 0.85rem;
-        color: #94A3B8;
-        margin-top: 6px;
-    }
-    .ai-badge {
-        background: linear-gradient(90deg, #F58220 0%, #E65100 100%);
-        color: #FFFFFF;
-        font-size: 0.7rem;
-        font-weight: 700;
-        padding: 3px 10px;
-        border-radius: 20px;
-        text-transform: uppercase;
-        letter-spacing: 0.8px;
-    }
 
-    /* Cards de KPI Reativos */
-    div[data-testid="stMetric"] {
-        background-color: #161224 !important;
-        border: 1px solid #2B2240 !important;
-        border-radius: 10px !important;
-        padding: 14px 18px !important;
-        border-top: 3px solid #F58220 !important;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4) !important;
-        transition: transform 0.2s ease;
-    }
-    div[data-testid="stMetric"]:hover {
-        transform: translateY(-2px);
-        border-color: #F58220 !important;
-    }
-    div[data-testid="stMetricLabel"] p {
-        color: #94A3B8 !important;
+# ============================================================
+# CORES
+# ============================================================
+
+BG = "#0E0B16"
+CARD = "#161224"
+PURPLE = "#3B176D"
+PURPLE_LIGHT = "#8B5CF6"
+ORANGE = "#F58220"
+WHITE = "#FFFFFF"
+GRAY = "#94A3B8"
+BORDER = "#2B2240"
+
+
+# ============================================================
+# CSS
+# ============================================================
+
+st.markdown(
+    f"""
+    <style>
+
+    .stApp {{
+        background-color: {BG};
+        color: {WHITE};
+    }}
+
+    .block-container {{
+        padding-top: 1.5rem;
+        padding-bottom: 2rem;
+    }}
+
+    .senior-header {{
+        background: linear-gradient(
+            135deg,
+            #1D0F38 0%,
+            #120A24 100%
+        );
+
+        padding: 25px 30px;
+        border-radius: 14px;
+        border-left: 6px solid {ORANGE};
+        margin-bottom: 25px;
+    }}
+
+    .senior-title {{
+        color: {WHITE};
+        font-size: 2rem;
+        font-weight: 800;
+        margin-bottom: 5px;
+    }}
+
+    .senior-subtitle {{
+        color: {GRAY};
+        font-size: 0.95rem;
+    }}
+
+    div[data-testid="stMetric"] {{
+        background-color: {CARD} !important;
+        border: 1px solid {BORDER} !important;
+        border-radius: 12px !important;
+        padding: 16px 18px !important;
+        border-top: 3px solid {ORANGE} !important;
+    }}
+
+    div[data-testid="stMetricLabel"] p {{
+        color: {GRAY} !important;
         font-size: 0.75rem !important;
         font-weight: 700 !important;
-        text-transform: uppercase !important;
-    }
-    div[data-testid="stMetricValue"] div {
-        color: #FFFFFF !important;
-        font-size: 1.15rem !important;
+    }}
+
+    div[data-testid="stMetricValue"] div {{
+        color: {WHITE} !important;
+        font-size: 1.3rem !important;
         font-weight: 800 !important;
-    }
-    div[data-testid="stMetricDelta"] {
-        color: #F58220 !important;
-        font-size: 0.75rem !important;
-        font-weight: 600 !important;
-    }
+    }}
 
-    /* AI Insight Box */
-    .ai-insight-card {
-        background: linear-gradient(135deg, #1A102F 0%, #0F0A1C 100%);
-        border: 1px solid #3B176D;
-        border-radius: 10px;
-        padding: 20px;
-        margin-bottom: 20px;
-        border-left: 4px solid #8B5CF6;
-    }
-    
-    /* Abas */
-    button[data-baseweb="tab"] {
-        color: #94A3B8 !important;
-        font-weight: 600;
-        font-size: 0.9rem;
-    }
-    button[aria-selected="true"] {
-        color: #F58220 !important;
-        border-bottom-color: #F58220 !important;
-    }
-    
-    /* Sidebar */
-    section[data-testid="stSidebar"] {
-        background-color: #120D1F;
-        border-right: 1px solid #231B36;
-    }
+    .ai-box {{
+        background: linear-gradient(
+            135deg,
+            #1D0F38,
+            #161224
+        );
+
+        border: 1px solid #4C2A78;
+        border-left: 5px solid {PURPLE_LIGHT};
+        border-radius: 12px;
+        padding: 22px;
+        margin-top: 15px;
+        margin-bottom: 25px;
+    }}
+
+    .ai-title {{
+        color: {PURPLE_LIGHT};
+        font-size: 1.1rem;
+        font-weight: 800;
+        margin-bottom: 12px;
+    }}
+
+    .ai-text {{
+        color: #E2E8F0;
+        line-height: 1.7;
+        font-size: 0.95rem;
+    }}
+
+    .attention {{
+        background-color: #241A16;
+        border-left: 4px solid {ORANGE};
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 10px;
+    }}
+
     </style>
-""", unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True
+)
 
-# ==========================================
-# PIPELINE ETL AUTOMÁTICO (SELF-HEALING)
-# ==========================================
-class DataPipeline:
-    """Pipeline para parsing, limpeza, resiliência de schemas e consolidação."""
-    
-    @staticmethod
-    @st.cache_data(ttl=600)
-    def process_excel(file_path_or_buffer):
-        xls = pd.ExcelFile(file_path_or_buffer)
-        
-        # Estratégia 1: Extrair Resumo Consolidado da Capa (se disponível)
-        if 'CAPA' in xls.sheet_names:
-            df_capa = pd.read_excel(file_path_or_buffer, sheet_name='CAPA')
-            
-            # Algoritmo de Varredura Dinâmica para localizar a Tabela Gerencial
-            summary_cols = ['Unnamed: 30', 'Unnamed: 31', 'Unnamed: 32', 'Unnamed: 33', 'Unnamed: 34', 'Unnamed: 35', 'Unnamed: 36']
-            if set(summary_cols).issubset(df_capa.columns):
-                df_summary = df_capa[summary_cols].dropna(how='all').copy()
-                df_summary.columns = ['OPERACAO', 'TOTAL_RV', 'TOTAL_BH', 'RECEITA_LIQUIDA', 'CUSTO_OP', 'REPRESENTATIVIDADE', 'HC_ATIVOS']
-                df_summary = df_summary[df_summary['OPERACAO'] != 'OPERAÇÃO'].reset_index(drop=True)
-                
-                # Coerção de tipos de dados numéricos
-                num_cols = ['TOTAL_RV', 'TOTAL_BH', 'RECEITA_LIQUIDA', 'CUSTO_OP', 'HC_ATIVOS']
-                for c in num_cols:
-                    df_summary[c] = pd.to_numeric(df_summary[c], errors='coerce').fillna(0)
-                
-                df_summary['OPERACAO'] = df_summary['OPERACAO'].astype(str).str.strip()
-                
-                # Recálculo sintético de garantia
-                df_summary['REPRESENTATIVIDADE_PCT'] = df_summary.apply(
-                    lambda r: (r['CUSTO_OP'] / r['RECEITA_LIQUIDA'] * 100) if r['RECEITA_LIQUIDA'] > 0 else 0, axis=1
+
+# ============================================================
+# FUNÇÕES AUXILIARES
+# ============================================================
+
+def normalize_text(text):
+    """Normaliza texto para facilitar identificação de colunas."""
+
+    if text is None:
+        return ""
+
+    text = str(text).strip().upper()
+
+    replacements = {
+        "Á": "A",
+        "À": "A",
+        "Ã": "A",
+        "Â": "A",
+        "É": "E",
+        "Ê": "E",
+        "Í": "I",
+        "Ó": "O",
+        "Ô": "O",
+        "Õ": "O",
+        "Ú": "U",
+        "Ç": "C"
+    }
+
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+
+    text = re.sub(r"[^A-Z0-9]+", "_", text)
+
+    return text.strip("_")
+
+
+def clean_numeric(series):
+    """
+    Converte valores financeiros/númericos de forma resiliente.
+    """
+
+    if pd.api.types.is_numeric_dtype(series):
+        return pd.to_numeric(series, errors="coerce").fillna(0)
+
+    s = (
+        series
+        .astype(str)
+        .str.strip()
+        .str.replace("R$", "", regex=False)
+        .str.replace(".", "", regex=False)
+        .str.replace(",", ".", regex=False)
+        .str.replace("%", "", regex=False)
+    )
+
+    return pd.to_numeric(s, errors="coerce").fillna(0)
+
+
+def find_column(df, possible_names):
+    """
+    Localiza uma coluna mesmo que o Excel tenha pequenas
+    diferenças de nomenclatura.
+    """
+
+    normalized = {
+        normalize_text(col): col
+        for col in df.columns
+    }
+
+    for name in possible_names:
+
+        key = normalize_text(name)
+
+        if key in normalized:
+            return normalized[key]
+
+    # tentativa por aproximação
+    for norm_col, original_col in normalized.items():
+
+        for name in possible_names:
+
+            norm_name = normalize_text(name)
+
+            if norm_name in norm_col or norm_col in norm_name:
+                return original_col
+
+    return None
+
+
+# ============================================================
+# LEITURA DO EXCEL
+# ============================================================
+
+@st.cache_data
+def load_excel(file_bytes):
+
+    excel = pd.ExcelFile(io.BytesIO(file_bytes))
+
+    sheets = excel.sheet_names
+
+    # --------------------------------------------------------
+    # 1. Tenta CAPA
+    # --------------------------------------------------------
+
+    if "CAPA" in sheets:
+
+        raw = pd.read_excel(
+            io.BytesIO(file_bytes),
+            sheet_name="CAPA",
+            header=None
+        )
+
+        # procura uma linha contendo OPERAÇÃO
+        header_row = None
+
+        for i in range(min(len(raw), 50)):
+
+            row = raw.iloc[i].astype(str).str.upper()
+
+            if row.str.contains("OPERA", na=False).any():
+
+                header_row = i
+                break
+
+        if header_row is not None:
+
+            df = pd.read_excel(
+                io.BytesIO(file_bytes),
+                sheet_name="CAPA",
+                header=header_row
+            )
+
+            df.columns = [
+                normalize_text(c)
+                for c in df.columns
+            ]
+
+            required = {
+                "OPERACAO": [
+                    "OPERACAO",
+                    "OPERAÇÃO"
+                ],
+
+                "TOTAL_RV": [
+                    "TOTAL_RV",
+                    "TOTAL RV",
+                    "RV"
+                ],
+
+                "TOTAL_BH": [
+                    "TOTAL_BH",
+                    "TOTAL BH",
+                    "BH"
+                ],
+
+                "RECEITA_LIQUIDA": [
+                    "RECEITA_LIQUIDA",
+                    "RECEITA LIQUIDA",
+                    "RECEITA"
+                ],
+
+                "CUSTO_OP": [
+                    "CUSTO_OP",
+                    "CUSTO OP"
+                ],
+
+                "HC_ATIVOS": [
+                    "QUANTIDADE_HCS_ATIVOS",
+                    "HC_ATIVOS",
+                    "HEADCOUNT",
+                    "HC"
+                ]
+            }
+
+            result = {}
+
+            for target, options in required.items():
+
+                col = find_column(df, options)
+
+                if col:
+                    result[target] = df[col]
+
+            # Se encontrou o essencial
+            if (
+                "OPERACAO" in result
+                and "TOTAL_RV" in result
+                and "TOTAL_BH" in result
+                and "RECEITA_LIQUIDA" in result
+            ):
+
+                final = pd.DataFrame(result)
+
+                # ------------------------------------------------
+                # Limpeza
+                # ------------------------------------------------
+
+                final["OPERACAO"] = (
+                    final["OPERACAO"]
+                    .astype(str)
+                    .str.strip()
                 )
-                df_summary['CUSTO_POR_HC'] = df_summary.apply(
-                    lambda r: (r['CUSTO_OP'] / r['HC_ATIVOS']) if r['HC_ATIVOS'] > 0 else 0, axis=1
+
+                final = final[
+                    ~final["OPERACAO"]
+                    .str.upper()
+                    .isin([
+                        "",
+                        "NAN",
+                        "TOTAL",
+                        "TOTAL GERAL",
+                        "OPERACAO"
+                    ])
+                ]
+
+                # ------------------------------------------------
+                # Valores
+                # ------------------------------------------------
+
+                for col in [
+                    "TOTAL_RV",
+                    "TOTAL_BH",
+                    "RECEITA_LIQUIDA",
+                    "CUSTO_OP",
+                    "HC_ATIVOS"
+                ]:
+
+                    if col in final:
+                        final[col] = clean_numeric(final[col])
+
+                # ------------------------------------------------
+                # Cálculos
+                # ------------------------------------------------
+
+                # Sempre recalcula Custo OP para garantir
+                # consistência com a regra de negócio.
+
+                final["CUSTO_OP"] = (
+                    final["TOTAL_RV"] +
+                    final["TOTAL_BH"]
                 )
-                
-                return df_summary
 
-        # Fallback de Segurança: Agregação em tempo real das abas brutas se a Capa falhar
-        st.warning("⚠️ Módulo de Fallback Ativado: Processando dados brutos diretamente das abas operacionais...")
-        return DataPipeline._reconstruct_from_raw(xls)
+                final["REPRESENTATIVIDADE_PCT"] = np.where(
+                    final["RECEITA_LIQUIDA"] > 0,
+                    (
+                        final["CUSTO_OP"] /
+                        final["RECEITA_LIQUIDA"]
+                    ) * 100,
+                    0
+                )
 
-    @staticmethod
-    def _reconstruct_from_raw(xls):
-        # Leitura da Base de Horas
-        df_bh = pd.read_excel(xls, sheet_name='BASE DE HORAS')
-        grp_bh = df_bh.groupby('Descricao')['valor'].sum().reset_index()
-        grp_bh.columns = ['OPERACAO', 'TOTAL_BH']
-        
-        # Leitura dos Ativos
-        df_hc = pd.read_excel(xls, sheet_name='ATIVOS E DEMITIDOS')
-        grp_hc = df_hc[df_hc['STATUS_ST'] == 'ATIVO'].groupby('DESC_CC')['MATRICULA'].nunique().reset_index()
-        grp_hc.columns = ['OPERACAO', 'HC_ATIVOS']
-        
-        # Merge de contingência
-        merged = pd.merge(grp_bh, grp_hc, on='OPERACAO', how='outer').fillna(0)
-        merged['TOTAL_RV'] = 0.0
-        merged['RECEITA_LIQUIDA'] = 0.0
-        merged['CUSTO_OP'] = merged['TOTAL_BH'] + merged['TOTAL_RV']
-        merged['REPRESENTATIVIDADE_PCT'] = 0.0
-        merged['CUSTO_POR_HC'] = merged.apply(lambda r: (r['CUSTO_OP'] / r['HC_ATIVOS']) if r['HC_ATIVOS'] > 0 else 0, axis=1)
-        
-        return merged
+                final["CUSTO_POR_HC"] = np.where(
+                    final.get("HC_ATIVOS", 0) > 0,
+                    final["CUSTO_OP"] /
+                    final["HC_ATIVOS"],
+                    0
+                )
 
-# ==========================================
-# AGENTE DE INTELIGÊNCIA ARTIFICIAL (AI ENGINE)
-# ==========================================
-class AIAgentEngine:
-    """Motor de análise preditiva e geração de insights executivos via LLM."""
-    
-    @staticmethod
-    def generate_executive_insights(df_filtered, api_key=None):
-        total_rec = df_filtered['RECEITA_LIQUIDA'].sum()
-        total_custo = df_filtered['CUSTO_OP'].sum()
-        rep_geral = (total_custo / total_rec * 100) if total_rec > 0 else 0
-        acima_ref = df_filtered[df_filtered['REPRESENTATIVIDADE_PCT'] > 3.0]['OPERACAO'].tolist()
-        top_custo_op = df_filtered.sort_values(by='CUSTO_OP', ascending=False).iloc[0]['OPERACAO'] if len(df_filtered) > 0 else "N/A"
-        
-        # Prompt heurístico estruturado para IA
+                return final, sheets
+
+    raise ValueError(
+        "Não foi possível identificar uma tabela gerencial válida na aba CAPA."
+    )
+
+
+# ============================================================
+# MOTOR DE INSIGHTS SEM IA
+# ============================================================
+
+def generate_rule_based_insights(df):
+
+    if df.empty:
+        return "Não existem dados suficientes para gerar o parecer."
+
+    total_rv = df["TOTAL_RV"].sum()
+    total_bh = df["TOTAL_BH"].sum()
+    receita = df["RECEITA_LIQUIDA"].sum()
+    custo = df["CUSTO_OP"].sum()
+
+    representatividade = (
+        custo / receita * 100
+        if receita > 0
+        else 0
+    )
+
+    # --------------------------------------------------------
+    # Ranking BH
+    # --------------------------------------------------------
+
+    top_bh = (
+        df.sort_values(
+            "TOTAL_BH",
+            ascending=False
+        )
+        .head(3)
+    )
+
+    # --------------------------------------------------------
+    # Ranking RV
+    # --------------------------------------------------------
+
+    top_rv = (
+        df.sort_values(
+            "TOTAL_RV",
+            ascending=False
+        )
+        .head(3)
+    )
+
+    # --------------------------------------------------------
+    # Maior representatividade
+    # --------------------------------------------------------
+
+    top_rep = (
+        df.sort_values(
+            "REPRESENTATIVIDADE_PCT",
+            ascending=False
+        )
+        .head(3)
+    )
+
+    # --------------------------------------------------------
+    # Construção do parecer
+    # --------------------------------------------------------
+
+    texto = []
+
+    texto.append(
+        f"O cenário consolidado apresenta Receita Líquida "
+        f"de R$ {receita:,.2f}, com Custo Operacional "
+        f"de R$ {custo:,.2f}."
+    )
+
+    texto.append(
+        f"A representatividade consolidada do Custo Operacional "
+        f"corresponde a {representatividade:.2f}% da Receita Líquida, "
+        f"considerando a referência teórica de 3,0%."
+    )
+
+    texto.append(
+        f"O total registrado de Remuneração Variável é de "
+        f"R$ {total_rv:,.2f}, enquanto o Banco de Horas "
+        f"representa R$ {total_bh:,.2f}."
+    )
+
+    # --------------------------------------------------------
+    # BH
+    # --------------------------------------------------------
+
+    if len(top_bh) > 0:
+
+        nomes = ", ".join(
+            top_bh["OPERACAO"].head(3).tolist()
+        )
+
+        texto.append(
+            f"Em relação ao Banco de Horas, as maiores "
+            f"concentrações financeiras estão associadas a: "
+            f"{nomes}."
+        )
+
+    # --------------------------------------------------------
+    # RV
+    # --------------------------------------------------------
+
+    if len(top_rv) > 0:
+
+        nomes = ", ".join(
+            top_rv["OPERACAO"].head(3).tolist()
+        )
+
+        texto.append(
+            f"Para Remuneração Variável, os maiores valores "
+            f"registrados concentram-se em: {nomes}."
+        )
+
+    # --------------------------------------------------------
+    # Representatividade
+    # --------------------------------------------------------
+
+    if len(top_rep) > 0:
+
+        partes = []
+
+        for _, row in top_rep.iterrows():
+
+            partes.append(
+                f"{row['OPERACAO']} "
+                f"({row['REPRESENTATIVIDADE_PCT']:.2f}%)"
+            )
+
+        texto.append(
+            "As maiores representatividades observadas são: "
+            + ", ".join(partes)
+            + "."
+        )
+
+    texto.append(
+        "A análise é exclusivamente descritiva e considera "
+        "os valores disponibilizados no arquivo, sem inferir "
+        "a procedência ou a necessidade dos valores registrados."
+    )
+
+    return " ".join(texto)
+
+
+# ============================================================
+# GEMINI
+# ============================================================
+
+def get_gemini_key():
+
+    try:
+
+        if "GEMINI_API_KEY" in st.secrets:
+            return st.secrets["GEMINI_API_KEY"]
+
+    except Exception:
+        pass
+
+    return os.getenv("GEMINI_API_KEY")
+
+
+def generate_gemini_insights(df):
+
+    api_key = get_gemini_key()
+
+    if not api_key:
+        return None
+
+    try:
+
+        from google import genai
+
+        client = genai.Client(
+            api_key=api_key
+        )
+
+        # ----------------------------------------------------
+        # Resumo numérico enviado ao modelo
+        # ----------------------------------------------------
+
+        data = df.copy()
+
+        numeric_cols = [
+            "TOTAL_RV",
+            "TOTAL_BH",
+            "RECEITA_LIQUIDA",
+            "CUSTO_OP",
+            "REPRESENTATIVIDADE_PCT",
+            "HC_ATIVOS",
+            "CUSTO_POR_HC"
+        ]
+
+        for col in numeric_cols:
+
+            if col in data:
+                data[col] = pd.to_numeric(
+                    data[col],
+                    errors="coerce"
+                ).fillna(0)
+
+        payload = {
+            "total_operacoes": int(len(data)),
+            "receita_liquida": float(
+                data["RECEITA_LIQUIDA"].sum()
+            ),
+            "total_rv": float(
+                data["TOTAL_RV"].sum()
+            ),
+            "total_bh": float(
+                data["TOTAL_BH"].sum()
+            ),
+            "custo_operacional": float(
+                data["CUSTO_OP"].sum()
+            ),
+            "representatividade_consolidada": float(
+                (
+                    data["CUSTO_OP"].sum() /
+                    data["RECEITA_LIQUIDA"].sum() *
+                    100
+                )
+                if data["RECEITA_LIQUIDA"].sum() > 0
+                else 0
+            ),
+            "operacoes": data.to_dict(
+                orient="records"
+            )
+        }
+
         prompt = f"""
-        Como um especialista senior em Control Desk, FP&A e Business Intelligence da SERCOM, analise estes dados de fechamento:
-        - Receita Líquida Total: R$ {total_rec:,.2f}
-        - Custo Operacional Total (RV + BH): R$ {total_custo:,.2f}
-        - Representatividade Média do Custo sobre a Receita: {rep_geral:.2f}% (Benchmark Referência: 3,0%)
-        - Operações que excederam o Benchmark de 3,0%: {', '.join(acima_ref) if acima_ref else 'Nenhuma'}
-        - Maior Custo Operacional Absoluto: {top_custo_op}
+Você é um analista executivo de planejamento financeiro
+da SERCOM.
 
-        Gere um parecer executivo neutro, direto e de alto nível em 3 tópicos curtos:
-        1. Resumo da Exposição Financeira
-        2. Destaques de Proporcionalidade (Referência Teórica 3,0%)
-        3. Ponto de Atenção para Tomada de Decisão Gerencial
-        """
-        
-        # Tenta integração com API da OpenAI se fornecida, caso contrário usa síntese local determinística
-        if api_key and len(api_key) > 10:
-            try:
-                import openai
-                client = openai.OpenAI(api_key=api_key)
-                response = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=300
-                )
-                return response.choices[0].message.content
-            except Exception as e:
-                return f"⚠️ Erro ao consultar a API do LLM: {str(e)}. Exibindo síntese determinística da IA."
-        
-        # Síntese determinística nativa da IA (sem necessidade de API key)
-        return f"""
-        **1. Exposição Financeira Global:** O custo operacional consolidado é de **R$ {total_custo:,.2f}**, representando **{rep_geral:.2f}%** da Receita Líquida Total de R$ {total_rec:,.2f}.
-        
-        **2. Proporcionalidade vs Benchmark (3,0%):** Foram identificadas **{len(acima_ref)} operações** com representatividade superior ao marco teórico de 3,0%, com destaque para a concentração de volume na operação **{top_custo_op}**.
-        
-        **3. Ponto de Atenção Executivo:** Recomenda-se acompanhamento pontual da variação do Banco de Horas (BH) nas contas que superam a meta teórica para avaliar a distribuição de horas por operador sem comprometer a margem das operações.
-        """
+Analise exclusivamente os dados abaixo.
 
-# ==========================================
-# CARREGAMENTO DE DADOS & INTERFACE
-# ==========================================
-file_name = 'Analise colaboradores.xlsx'
+OBJETIVO:
+Produzir um parecer executivo curto, objetivo e
+estritamente descritivo.
 
-# Sidebar do Dev Senior
-st.sidebar.markdown("### 🛠️ Dev & AI Management")
-st.sidebar.caption("Pipeline Status: **ONLINE (v2.4-ai)**")
+REGRAS IMPORTANTES:
 
-uploaded_file = st.sidebar.file_uploader("📥 Alimentar Nova Base (.xlsx)", type=['xlsx'])
-target_file = uploaded_file if uploaded_file else file_name
+1. Não afirmar que qualquer valor é errado.
+2. Não afirmar que qualquer valor é indevido.
+3. Não afirmar que qualquer valor é irregular.
+4. Não afirmar fraude.
+5. Não afirmar que BH ou RV deveria ser reduzido.
+6. Não propor cortes.
+7. Não questionar a validade dos critérios utilizados.
+8. Não inventar informações.
+9. Não criar números que não estejam nos dados.
+10. A referência de 3% é apenas uma META TEÓRICA.
+11. Sempre analisar Custo Operacional junto da Receita Líquida.
+12. O Custo Operacional é:
+    TOTAL RV + TOTAL BH.
+13. Representatividade:
+    CUSTO OP / RECEITA LÍQUIDA * 100.
 
-# Configuração da API Key de IA (Opcional)
-openai_key = st.sidebar.text_input("🔑 OpenAI API Key (Opcional p/ LLM):", type="password", help="Insira sua chave para ativar insights dinâmicos GPT-4. Se vazio, a IA usará seu algoritmo nativo.")
+Dê atenção especial à quantidade e concentração de
+Banco de Horas.
 
-try:
-    data = DataPipeline.process_excel(target_file)
-except Exception as e:
-    st.error(f"Erro crítico no processamento do arquivo: {str(e)}")
-    st.stop()
+Analise:
 
-# Filtro Multiselect
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 🎯 Filtro de Escopo")
-all_ops = sorted(data['OPERACAO'].unique())
-selected_ops = st.sidebar.multiselect("Selecione Operações:", options=all_ops, default=all_ops)
+- Receita Líquida;
+- RV;
+- BH;
+- Custo Operacional;
+- Representatividade;
+- concentração por operação;
+- custo por HC;
+- maiores exposições;
+- operações próximas ou acima da referência teórica de 3%.
 
-df_filtered = data[data['OPERACAO'].isin(selected_ops)]
+Utilize linguagem executiva.
 
-# Header Executivo
-st.markdown("""
+Use expressões como:
+
+"valor registrado"
+"cenário observado"
+"exposição financeira"
+"concentração"
+"representatividade"
+"ponto de atenção"
+
+Estrutura da resposta:
+
+1. VISÃO EXECUTIVA
+2. BANCO DE HORAS
+3. REMUNERAÇÃO VARIÁVEL
+4. CUSTO X RECEITA
+5. PRINCIPAIS PONTOS DE ATENÇÃO
+
+Não faça recomendações de redução.
+
+DADOS:
+
+{json.dumps(payload, ensure_ascii=False, default=float)}
+"""
+
+        response = client.models.generate_content(
+            model="gemini-3-flash-preview",
+            contents=prompt
+        )
+
+        return response.text
+
+    except Exception as e:
+
+        st.session_state["ai_error"] = str(e)
+
+        return None
+
+
+# ============================================================
+# UPLOAD
+# ============================================================
+
+st.markdown(
+    """
     <div class="senior-header">
+
         <div class="senior-title">
-            SERCOM Executive Cost Center Analytics 
-            <span class="ai-badge">AI Engine Active</span>
+            SERCOM | Executive Analytics
         </div>
+
         <div class="senior-subtitle">
-            Arquitetura de BI Resiliente | Monitoramento de Receita Líquida, Banco de Horas (BH) e Remuneração Variável (RV)
+            Análise Executiva de Custos Operacionais
+            • Banco de Horas • RV • Receita Líquida
         </div>
+
     </div>
-""", unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True
+)
 
-# KPIs Consolidados
-t_rec = df_filtered['RECEITA_LIQUIDA'].sum()
-t_custo = df_filtered['CUSTO_OP'].sum()
-t_rv = df_filtered['TOTAL_RV'].sum()
-t_bh = df_filtered['TOTAL_BH'].sum()
-t_rep = (t_custo / t_rec * 100) if t_rec > 0 else 0
 
-def fmt_brl(v):
-    return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+uploaded_file = st.file_uploader(
+    "Carregar arquivo Excel",
+    type=["xlsx"]
+)
 
-k1, k2, k3, k4, k5 = st.columns(5)
-with k1: st.metric("Receita Líquida", fmt_brl(t_rec))
-with k2: st.metric("Custo OP Total", fmt_brl(t_custo))
-with k3: st.metric("Total RV Registrada", fmt_brl(t_rv))
-with k4: st.metric("Total BH Registrado", fmt_brl(t_bh))
-with k5: st.metric("Representatividade", f"{t_rep:.2f}%".replace(".", ","), delta="Ref. Teórica: 3,0%")
 
-st.write("")
+if uploaded_file:
 
-# Módulo de Análise Inteligente de IA (AI Insights)
-with st.expander("🤖 **AI Executive Summary & Diagnóstico Preditivo**", expanded=True):
-    col_ai_1, col_ai_2 = st.columns([8, 2])
-    with col_ai_1:
-        ai_insights = AIAgentEngine.generate_executive_insights(df_filtered, openai_key)
-        st.markdown(f'<div class="ai-insight-card">{ai_insights}</div>', unsafe_allow_html=True)
-    with col_ai_2:
-        st.markdown("##### AI Controls")
-        if st.button("🔄 Regenerar Análise", use_container_width=True):
-            st.rerun()
-        
-        # Download do relatório em JSON
-        json_data = df_filtered.to_json(orient="records")
-        st.download_button(
-            label="📥 Exportar Data Set (JSON)",
-            data=json_data,
-            file_name="sercom_cost_center_ai.json",
-            mime="application/json",
+    try:
+
+        file_bytes = uploaded_file.getvalue()
+
+        df, sheets = load_excel(file_bytes)
+
+        st.success(
+            f"Arquivo carregado com sucesso • "
+            f"{len(df)} operações identificadas"
+        )
+
+        # ====================================================
+        # SIDEBAR
+        # ====================================================
+
+        st.sidebar.header("Filtros")
+
+        operacoes = sorted(
+            df["OPERACAO"].dropna().unique().tolist()
+        )
+
+        selected_operations = st.sidebar.multiselect(
+            "Operações",
+            operacoes,
+            default=operacoes
+        )
+
+        filtered_df = df[
+            df["OPERACAO"].isin(
+                selected_operations
+            )
+        ].copy()
+
+        # ====================================================
+        # KPIs
+        # ====================================================
+
+        receita = filtered_df["RECEITA_LIQUIDA"].sum()
+        rv = filtered_df["TOTAL_RV"].sum()
+        bh = filtered_df["TOTAL_BH"].sum()
+        custo = filtered_df["CUSTO_OP"].sum()
+
+        representatividade = (
+            custo / receita * 100
+            if receita > 0
+            else 0
+        )
+
+        col1, col2, col3, col4, col5 = st.columns(5)
+
+        col1.metric(
+            "RECEITA LÍQUIDA",
+            f"R$ {receita:,.0f}"
+        )
+
+        col2.metric(
+            "TOTAL RV",
+            f"R$ {rv:,.0f}"
+        )
+
+        col3.metric(
+            "TOTAL BH",
+            f"R$ {bh:,.0f}"
+        )
+
+        col4.metric(
+            "CUSTO OP",
+            f"R$ {custo:,.0f}"
+        )
+
+        col5.metric(
+            "REPRESENTATIVIDADE",
+            f"{representatividade:.2f}%"
+        )
+
+        st.divider()
+
+        # ====================================================
+        # IA
+        # ====================================================
+
+        st.subheader("🤖 Parecer Executivo")
+
+        generate_ai = st.button(
+            "Gerar análise executiva",
+            type="primary"
+        )
+
+        if generate_ai:
+
+            with st.spinner(
+                "Analisando dados e construindo parecer executivo..."
+            ):
+
+                # Primeiro tenta Gemini
+                ai_text = generate_gemini_insights(
+                    filtered_df
+                )
+
+                # Fallback automático
+                if not ai_text:
+
+                    ai_text = generate_rule_based_insights(
+                        filtered_df
+                    )
+
+                    source = "Motor analítico interno"
+
+                else:
+
+                    source = "Gemini"
+
+                st.session_state["ai_text"] = ai_text
+                st.session_state["ai_source"] = source
+
+        if "ai_text" in st.session_state:
+
+            st.markdown(
+                f"""
+                <div class="ai-box">
+
+                    <div class="ai-title">
+                        PARECER EXECUTIVO
+                    </div>
+
+                    <div class="ai-text">
+                        {st.session_state["ai_text"]}
+                    </div>
+
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+            st.caption(
+                f"Fonte da análise: "
+                f"{st.session_state.get('ai_source', '')}"
+            )
+
+        # ====================================================
+        # GRÁFICO REPRESENTATIVIDADE
+        # ====================================================
+
+        st.subheader(
+            "Representatividade do Custo Operacional"
+        )
+
+        chart_df = (
+            filtered_df
+            .sort_values(
+                "REPRESENTATIVIDADE_PCT",
+                ascending=True
+            )
+        )
+
+        fig = px.bar(
+            chart_df,
+            x="REPRESENTATIVIDADE_PCT",
+            y="OPERACAO",
+            orientation="h",
+            text="REPRESENTATIVIDADE_PCT"
+        )
+
+        fig.add_vline(
+            x=3,
+            line_dash="dash",
+            line_color=ORANGE,
+            annotation_text="Referência teórica: 3%"
+        )
+
+        fig.update_traces(
+            marker_color=PURPLE_LIGHT,
+            texttemplate="%{text:.2f}%",
+            textposition="outside"
+        )
+
+        fig.update_layout(
+            template="plotly_dark",
+            paper_bgcolor=BG,
+            plot_bgcolor=BG,
+            font_color=WHITE,
+            xaxis_title="Representatividade (%)",
+            yaxis_title="",
+            margin=dict(
+                l=10,
+                r=40,
+                t=30,
+                b=20
+            )
+        )
+
+        st.plotly_chart(
+            fig,
             use_container_width=True
         )
 
-# Abas de Análise
-tab1, tab2, tab3 = st.tabs([
-    "🔍 Ficha Detalhada por Operação", 
-    "📊 Benchmarking & Proporcionalidade (3,0%)", 
-    "📋 Matriz Consolidada de Dados"
-])
+        # ====================================================
+        # BH
+        # ====================================================
 
-# ABA 1: DRILL-DOWN POR OPERAÇÃO
-with tab1:
-    st.markdown("### 🔎 Análise Individualizada de Operação")
-    selected_op = st.selectbox("Selecione a Operação para Drill-down:", options=sorted(df_filtered['OPERACAO'].unique()), index=0)
-    
-    op_row = df_filtered[df_filtered['OPERACAO'] == selected_op].iloc[0]
-    
-    op_rec = op_row['RECEITA_LIQUIDA']
-    op_custo = op_row['CUSTO_OP']
-    op_rv = op_row['TOTAL_RV']
-    op_bh = op_row['TOTAL_BH']
-    op_rep = op_row['REPRESENTATIVIDADE_PCT']
-    op_hc = op_row['HC_ATIVOS']
-    op_c_hc = op_row['CUSTO_POR_HC']
-    
-    delta_str = "≤ 3.0% (Dentro da Meta)" if op_rep <= 3.0 else "> 3.0% (Acima da Ref.)"
-    if op_rec == 0: delta_str = "Sem Receita Registrada"
+        st.subheader(
+            "Banco de Horas — Concentração"
+        )
 
-    c1, c2, c3, c4, c5 = st.columns(5)
-    with c1: st.metric("Receita da Operação", fmt_brl(op_rec))
-    with c2: st.metric("Custo OP Operação", fmt_brl(op_custo))
-    with c3: st.metric("Representatividade %", f"{op_rep:.2f}%".replace(".", ","), delta=delta_str)
-    with c4: st.metric("Headcount (HC)", f"{int(op_hc)} Colaboradores")
-    with c5: st.metric("Custo Médio / HC", fmt_brl(op_c_hc))
-
-    st.write("")
-    g1, g2 = st.columns(2)
-    with g1:
-        st.markdown(f"#### Decomposição do Custo em **{selected_op}**")
-        if op_custo > 0:
-            fig_pie = px.pie(
-                names=['Remuneração Variável (RV)', 'Banco de Horas (BH)'],
-                values=[op_rv, op_bh],
-                color_discrete_sequence=['#8B5CF6', '#F58220'],
-                hole=0.55
+        bh_df = (
+            filtered_df[
+                [
+                    "OPERACAO",
+                    "TOTAL_BH",
+                    "HC_ATIVOS"
+                ]
+            ]
+            .sort_values(
+                "TOTAL_BH",
+                ascending=False
             )
-            fig_pie.update_layout(paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#E2E8F0'), height=320)
-            st.plotly_chart(fig_pie, use_container_width=True)
-        else:
-            st.info("Operação sem registro de Custo OP.")
-            
-    with g2:
-        st.markdown(f"#### Comparativo de Custo OP com Operações Pares")
-        df_peers = df_filtered[df_filtered['RECEITA_LIQUIDA'] > 0].sort_values(by='CUSTO_OP', ascending=False).head(8)
-        fig_peers = px.bar(
-            df_peers,
-            x='OPERACAO',
-            y='CUSTO_OP',
-            color='OPERACAO',
-            color_discrete_map={selected_op: '#F58220'},
-            color_discrete_sequence=['#3B176D']
         )
-        fig_peers.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#E2E8F0'), showlegend=False, height=320)
-        st.plotly_chart(fig_peers, use_container_width=True)
 
-# ABA 2: BENCHMARKING
-with tab2:
-    st.markdown("### 📊 Benchmarking & Exposição Financeira")
-    ba, bb = st.columns([6, 4])
-    
-    with ba:
-        st.markdown("#### Representatividade % vs. Benchmark Teórico (3,0%)")
-        df_rep = df_filtered[df_filtered['RECEITA_LIQUIDA'] > 0].sort_values(by='REPRESENTATIVIDADE_PCT', ascending=True)
-        colors = ['#F58220' if val > 3.0 else '#8B5CF6' for val in df_rep['REPRESENTATIVIDADE_PCT']]
-        
-        fig_rep = go.Figure(go.Bar(
-            y=df_rep['OPERACAO'],
-            x=df_rep['REPRESENTATIVIDADE_PCT'],
-            orientation='h',
-            marker_color=colors,
-            text=[f"{v:.2f}%".replace(".", ",") for v in df_rep['REPRESENTATIVIDADE_PCT']],
-            textposition='outside'
-        ))
-        fig_rep.add_vline(x=3.0, line_dash="dash", line_color="#EF4444", annotation_text=" Ref. Teórica (3,0%)", annotation_position="top right")
-        fig_rep.update_layout(height=520, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#E2E8F0'))
-        st.plotly_chart(fig_rep, use_container_width=True)
-        
-    with bb:
-        st.markdown("#### Top 8 Custo Médio por Headcount (R$/HC)")
-        df_hc_top = df_filtered[df_filtered['HC_ATIVOS'] > 0].sort_values(by='CUSTO_POR_HC', ascending=False).head(8)
-        fig_hc = px.bar(
-            df_hc_top,
-            x='CUSTO_POR_HC',
-            y='OPERACAO',
-            orientation='h',
-            text_auto='.2f',
-            color_discrete_sequence=['#F58220']
+        fig_bh = px.bar(
+            bh_df,
+            x="OPERACAO",
+            y="TOTAL_BH",
+            text="TOTAL_BH"
         )
-        fig_hc.update_layout(height=520, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#E2E8F0'), yaxis=dict(autorange="reversed"))
-        st.plotly_chart(fig_hc, use_container_width=True)
 
-# ABA 3: TABELA AUDITÁVEL
-with tab3:
-    st.markdown("### 📋 Tabela Gerencial Auditável")
-    
-    df_grid = df_filtered.copy()
-    df_grid['RECEITA_LIQUIDA'] = df_grid['RECEITA_LIQUIDA'].apply(fmt_brl)
-    df_grid['TOTAL_RV'] = df_grid['TOTAL_RV'].apply(fmt_brl)
-    df_grid['TOTAL_BH'] = df_grid['TOTAL_BH'].apply(fmt_brl)
-    df_grid['CUSTO_OP'] = df_grid['CUSTO_OP'].apply(fmt_brl)
-    df_grid['REPRESENTATIVIDADE_PCT'] = df_grid['REPRESENTATIVIDADE_PCT'].apply(lambda x: f"{x:.2f}%".replace(".", ","))
-    df_grid['CUSTO_POR_HC'] = df_grid['CUSTO_POR_HC'].apply(fmt_brl)
+        fig_bh.update_traces(
+            marker_color=ORANGE
+        )
 
-    df_grid = df_grid[['OPERACAO', 'RECEITA_LIQUIDA', 'TOTAL_RV', 'TOTAL_BH', 'CUSTO_OP', 'REPRESENTATIVIDADE_PCT', 'HC_ATIVOS', 'CUSTO_POR_HC']]
-    df_grid.columns = ['Operação', 'Receita Líquida', 'Total RV', 'Total BH', 'Custo OP', 'Representatividade %', 'HCs Ativos', 'Custo / HC']
+        fig_bh.update_layout(
+            template="plotly_dark",
+            paper_bgcolor=BG,
+            plot_bgcolor=BG,
+            font_color=WHITE,
+            xaxis_title="",
+            yaxis_title="Total BH"
+        )
 
-    st.dataframe(df_grid, use_container_width=True, hide_index=True)
+        st.plotly_chart(
+            fig_bh,
+            use_container_width=True
+        )
+
+        # ====================================================
+        # RV
+        # ====================================================
+
+        st.subheader(
+            "Remuneração Variável — Distribuição"
+        )
+
+        rv_df = (
+            filtered_df
+            .sort_values(
+                "TOTAL_RV",
+                ascending=False
+            )
+        )
+
+        fig_rv = px.bar(
+            rv_df,
+            x="OPERACAO",
+            y="TOTAL_RV",
+            text="TOTAL_RV"
+        )
+
+        fig_rv.update_traces(
+            marker_color=PURPLE_LIGHT
+        )
+
+        fig_rv.update_layout(
+            template="plotly_dark",
+            paper_bgcolor=BG,
+            plot_bgcolor=BG,
+            font_color=WHITE,
+            xaxis_title="",
+            yaxis_title="Total RV"
+        )
+
+        st.plotly_chart(
+            fig_rv,
+            use_container_width=True
+        )
+
+        # ====================================================
+        # TABELA
+        # ====================================================
+
+        st.subheader(
+            "Visão Consolidada"
+        )
+
+        display_df = filtered_df.copy()
+
+        display_df[
+            "REPRESENTATIVIDADE"
+        ] = display_df[
+            "REPRESENTATIVIDADE_PCT"
+        ].map(
+            lambda x: f"{x:.2f}%"
+        )
+
+        display_df[
+            "CUSTO_POR_HC"
+        ] = display_df[
+            "CUSTO_POR_HC"
+        ].map(
+            lambda x: f"R$ {x:,.2f}"
+        )
+
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        # ====================================================
+        # DOWNLOAD
+        # ====================================================
+
+        csv = filtered_df.to_csv(
+            index=False
+        ).encode("utf-8-sig")
+
+        st.download_button(
+            "Baixar dados filtrados",
+            csv,
+            "sercom_analytics.csv",
+            "text/csv"
+        )
+
+    except Exception as e:
+
+        st.error(
+            "Não foi possível processar o arquivo."
+        )
+
+        with st.expander(
+            "Detalhes técnicos"
+        ):
+            st.exception(e)
+
+else:
+
+    st.info(
+        "Carregue um arquivo Excel para iniciar a análise."
+    )
